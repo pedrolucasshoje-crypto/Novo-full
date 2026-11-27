@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "Multiverse-Packs-horizontal.zip"
+      - "Multiverse-Packs-story-canvas-debugfix.zip"
       - ".github/workflows/apk.yml"
 
 permissions:
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ZIP_NAME: "Multiverse-Packs-horizontal.zip"
+  ZIP_NAME: "Multiverse-Packs-story-canvas-debugfix.zip"
 
 jobs:
   build:
