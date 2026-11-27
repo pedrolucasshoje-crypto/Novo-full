@@ -1,80 +1,107 @@
-name: Gerar APK Android
+
+name: Gerar APK - Multiverse Packs
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "multiverse-packs-completo.zip"
       - ".github/workflows/apk.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Compilar Multiverse Packs
     runs-on: ubuntu-latest
 
     steps:
       - name: Baixar repositório
         uses: actions/checkout@v4
 
-      - name: Verificar ZIP enviado
-        shell: bash
-        run: |
-          ZIP="multiverse-packs-completo.zip"
-          if [ ! -f "$ZIP" ]; then
-            echo "::error::Não encontrei $ZIP na raiz do repositório."
-            echo "Arquivos encontrados:"
-            ls -la
-            exit 1
-          fi
-          unzip -t "$ZIP"
-
-      - name: Preparar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Preparar Java
+      - name: Configurar Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
 
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verificar ZIP
+        run: |
+          if [ ! -f multiverse-packs-completo.zip ]; then
+            echo "ZIP do jogo não encontrado na raiz."
+            ls -la
+            exit 1
+          fi
+          unzip -t multiverse-packs-completo.zip
+
       - name: Extrair projeto
-        shell: bash
         run: |
           mkdir -p projeto
           unzip -q multiverse-packs-completo.zip -d projeto
+
           test -f projeto/index.html
           test -f projeto/package.json
           test -f projeto/capacitor.config.json
-          echo "Estrutura do projeto:"
-          find projeto -maxdepth 2 -type f | sort | head -80
 
       - name: Instalar dependências
         working-directory: projeto
-        run: npm install --no-audit --no-fund --ignore-scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Preparar plataforma Android
+      - name: Preparar pasta www
+        working-directory: projeto
+        run: |
+          mkdir -p www
+
+          cp index.html www/
+          cp -r src www/
+          cp -r styles www/
+
+          if [ -d assets ]; then
+            cp -r assets www/
+          fi
+
+          echo "Conferindo arquivos:"
+          find www -maxdepth 3 -type f | sort
+
+          test -s www/index.html
+          test -s www/src/main.js
+          test -s www/styles/base.css
+
+      - name: Conferir configuração Capacitor
+        working-directory: projeto
+        run: |
+          node --input-type=module -e "
+          import fs from 'node:fs';
+          const c = JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8'));
+          if (c.webDir !== 'www') {
+            console.error('webDir precisa ser www');
+            process.exit(1);
+          }
+          "
+
+      - name: Adicionar Android
         working-directory: projeto
         run: npx cap add android
 
-      - name: Sincronizar Capacitor
+      - name: Sincronizar Android
         working-directory: projeto
         run: npx cap sync android
 
-      - name: Compilar APK de teste
+      - name: Compilar APK
         working-directory: projeto/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew --no-daemon assembleDebug
 
-      - name: Publicar APK
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: multiverse-packs-apk-debug
+          name: Multiverse-Packs-APK
           path: projeto/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
