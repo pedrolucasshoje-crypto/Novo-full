@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ZIP_NAME: "ZIP_NAME: multiverse-packs-completo(3).zip"
+  ZIP_NAME: "multiverse-packs-completo(3).zip"
 
 jobs:
   build:
