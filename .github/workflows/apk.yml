@@ -11,12 +11,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: multiverse-packs-apk
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Baixar repositório
+      - name: Baixar repositorio
         uses: actions/checkout@v4
 
       - name: Configurar Java
@@ -25,36 +30,46 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Configurar Node
+      - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Verificar ZIP
+      - name: Verificar ZIP do jogo
         run: |
-          if [ ! -f multiverse-packs-completo.zip ]; then
-            echo "ZIP do jogo não encontrado na raiz."
+          set -euo pipefail
+          ZIP="multiverse-packs-completo.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::ZIP nao encontrado na raiz."
             ls -la
             exit 1
           fi
-          unzip -t multiverse-packs-completo.zip
 
-      - name: Extrair projeto
+          unzip -t "$ZIP"
+
+      - name: Extrair e validar projeto
         run: |
+          set -euo pipefail
           mkdir -p projeto
           unzip -q multiverse-packs-completo.zip -d projeto
 
-          test -f projeto/index.html
-          test -f projeto/package.json
-          test -f projeto/capacitor.config.json
+          for file in index.html package.json capacitor.config.json src/main.js styles/base.css; do
+            if [ ! -s "projeto/$file" ]; then
+              echo "::error::Arquivo ausente: projeto/$file"
+              exit 1
+            fi
+          done
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
         working-directory: projeto
         run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Preparar pasta www
+      - name: Preparar arquivos web
         working-directory: projeto
         run: |
+          set -euo pipefail
+          rm -rf www
           mkdir -p www
 
           cp index.html www/
@@ -65,24 +80,35 @@ jobs:
             cp -r assets www/
           fi
 
-          echo "Conferindo arquivos:"
-          find www -maxdepth 3 -type f | sort
-
           test -s www/index.html
           test -s www/src/main.js
           test -s www/styles/base.css
 
-      - name: Conferir configuração Capacitor
+          echo "Arquivos web preparados:"
+          find www -maxdepth 3 -type f | sort
+
+      - name: Validar configuracao Capacitor
         working-directory: projeto
         run: |
-          node --input-type=module -e "
+          node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const c = JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8'));
-          if (c.webDir !== 'www') {
-            console.error('webDir precisa ser www');
+
+          const config = JSON.parse(
+            fs.readFileSync('capacitor.config.json', 'utf8')
+          );
+
+          if (config.webDir !== 'www') {
+            console.error('webDir precisa ser www.');
             process.exit(1);
           }
-          "
+
+          if (!config.appId || !config.appName) {
+            console.error('appId ou appName ausente.');
+            process.exit(1);
+          }
+
+          console.log('Configuracao validada.');
+          NODE
 
       - name: Adicionar Android
         working-directory: projeto
@@ -95,8 +121,16 @@ jobs:
       - name: Compilar APK
         working-directory: projeto/android
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Verificar APK
+        run: |
+          set -euo pipefail
+          APK="projeto/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          ls -lh "$APK"
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
