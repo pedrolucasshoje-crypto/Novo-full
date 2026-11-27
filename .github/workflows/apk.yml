@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p projeto
-          unzip -q multiverse-packs-completo.zip -d projeto
+          unzip -q multiverse-packs-completo(1).zip -d projeto
 
           for file in index.html package.json capacitor.config.json src/main.js styles/base.css; do
             if [ ! -s "projeto/$file" ]; then
