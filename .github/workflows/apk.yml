@@ -21,7 +21,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Baixar repositorio
@@ -38,28 +38,38 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Verificar ZIP do jogo
+      - name: Verificar ZIP
         run: |
           set -euo pipefail
-
+          echo "Procurando: $ZIP_NAME"
           if [ ! -f "$ZIP_NAME" ]; then
-            echo "::error::ZIP nao encontrado: $ZIP_NAME"
+            echo "::error::ZIP nao encontrado na raiz do repositorio."
             ls -la
             exit 1
           fi
-
           unzip -t "$ZIP_NAME"
 
-      - name: Extrair e validar projeto
+      - name: Extrair projeto
         run: |
           set -euo pipefail
-
           mkdir -p projeto
           unzip -q "$ZIP_NAME" -d projeto
+
+          if [ ! -f projeto/package.json ]; then
+            FOUND=$(find projeto -mindepth 2 -maxdepth 3 -name package.json -print -quit)
+            if [ -z "$FOUND" ]; then
+              echo "::error::package.json nao encontrado dentro do ZIP."
+              find projeto -maxdepth 3 -type f
+              exit 1
+            fi
+            ROOT="${FOUND%/package.json}"
+            cp -a "$ROOT"/. projeto/
+          fi
 
           for file in index.html package.json capacitor.config.json src/main.js styles/base.css; do
             if [ ! -s "projeto/$file" ]; then
               echo "::error::Arquivo ausente: projeto/$file"
+              find projeto -maxdepth 3 -type f
               exit 1
             fi
           done
@@ -72,26 +82,17 @@ jobs:
         working-directory: projeto
         run: |
           set -euo pipefail
-
           rm -rf www
           mkdir -p www
-
           cp index.html www/
           cp -r src www/
           cp -r styles www/
-
-          if [ -d assets ]; then
-            cp -r assets www/
-          fi
-
+          if [ -d assets ]; then cp -r assets www/; fi
           test -s www/index.html
           test -s www/src/main.js
           test -s www/styles/base.css
 
-          echo "Arquivos web preparados:"
-          find www -maxdepth 3 -type f | sort
-
-      - name: Validar configuracao Capacitor
+      - name: Validar Capacitor
         working-directory: projeto
         run: |
           node --input-type=module <<'NODE'
@@ -127,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          ./gradlew --no-daemon assembleDebug
 
       - name: Verificar APK
         run: |
