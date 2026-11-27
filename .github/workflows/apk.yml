@@ -1,98 +1,81 @@
+name: Gerar APK Android
 
-name: Gerar APK
-
-'on':
+on:
   push:
-    branches:
-      - main
+    paths:
+      - "multiverse-packs-completo.zip"
+      - ".github/workflows/apk.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Compilar Multiverse Packs
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Baixar repositório
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Extrair projeto
+      - name: Verificar ZIP enviado
+        shell: bash
         run: |
-          ZIP="multiverse-packs-expandido-revisado.zip"
-
+          ZIP="multiverse-packs-completo.zip"
           if [ ! -f "$ZIP" ]; then
-            echo "ZIP nao encontrado: $ZIP"
+            echo "::error::Não encontrei $ZIP na raiz do repositório."
+            echo "Arquivos encontrados:"
             ls -la
             exit 1
           fi
+          unzip -t "$ZIP"
 
-          mkdir projeto
-          unzip -o "$ZIP" -d projeto
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      - name: Localizar index.html
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Extrair projeto
+        shell: bash
         run: |
-          INDEX=$(find projeto -type f -name "index.html" | head -n 1)
+          mkdir -p projeto
+          unzip -q multiverse-packs-completo.zip -d projeto
+          test -f projeto/index.html
+          test -f projeto/package.json
+          test -f projeto/capacitor.config.json
+          echo "Estrutura do projeto:"
+          find projeto -maxdepth 2 -type f | sort | head -80
 
-          if [ -z "$INDEX" ]; then
-            echo "index.html nao encontrado"
-            find projeto -maxdepth 5 -type f
-            exit 1
-          fi
+      - name: Instalar dependências
+        working-directory: projeto
+        run: npm install --no-audit --no-fund --ignore-scripts
 
-          ROOT=$(dirname "$INDEX")
-          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+      - name: Preparar plataforma Android
+        working-directory: projeto
+        run: npx cap add android
 
-          echo "Projeto localizado em: $ROOT"
+      - name: Sincronizar Capacitor
+        working-directory: projeto
+        run: npx cap sync android
 
-      - name: Preparar arquivos
+      - name: Compilar APK de teste
+        working-directory: projeto/android
         run: |
-          cd "$PROJECT_ROOT"
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-          mkdir -p www
-          cp index.html www/
-
-          for item in styles src assets; do
-            if [ -e "$item" ]; then
-              cp -r "$item" www/
-            fi
-          done
-
-      - name: Instalar dependencias
-        run: |
-          cd "$PROJECT_ROOT"
-          npm install --ignore-scripts
-
-      - name: Instalar chave Android
-        run: |
-          mkdir -p ~/.android
-
-          if [ -f "$PROJECT_ROOT/assinatura/debug.keystore" ]; then
-            cp "$PROJECT_ROOT/assinatura/debug.keystore" ~/.android/debug.keystore
-          else
-            echo "Chave debug.keystore nao encontrada"
-            exit 1
-          fi
-
-      - name: Configurar Android
-        run: |
-          cd "$PROJECT_ROOT"
-          npx cap add android
-
-      - name: Compilar APK
-        run: |
-          cd "$PROJECT_ROOT/android"
-          ./gradlew assembleDebug
-
-      - name: Disponibilizar APK
+      - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
-          name: multiverse-packs-apk
-          path: ${{ env.PROJECT_ROOT }}/android/app/build/outputs/apk/debug/app-debug.apk
+          name: multiverse-packs-apk-debug
+          path: projeto/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
           
