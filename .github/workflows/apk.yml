@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "multiverse-packs-completo.zip"
+      - "multiverse-packs-completo(1).zip"
       - ".github/workflows/apk.yml"
 
 permissions:
@@ -14,6 +14,9 @@ permissions:
 concurrency:
   group: multiverse-packs-apk
   cancel-in-progress: true
+
+env:
+  ZIP_NAME: "multiverse-packs-completo(1).zip"
 
 jobs:
   build:
@@ -38,21 +41,21 @@ jobs:
       - name: Verificar ZIP do jogo
         run: |
           set -euo pipefail
-          ZIP="multiverse-packs-completo.zip"
 
-          if [ ! -f "$ZIP" ]; then
-            echo "::error::ZIP nao encontrado na raiz."
+          if [ ! -f "$ZIP_NAME" ]; then
+            echo "::error::ZIP nao encontrado: $ZIP_NAME"
             ls -la
             exit 1
           fi
 
-          unzip -t "$ZIP"
+          unzip -t "$ZIP_NAME"
 
       - name: Extrair e validar projeto
         run: |
           set -euo pipefail
+
           mkdir -p projeto
-          unzip -q multiverse-packs-completo(1).zip -d projeto
+          unzip -q "$ZIP_NAME" -d projeto
 
           for file in index.html package.json capacitor.config.json src/main.js styles/base.css; do
             if [ ! -s "projeto/$file" ]; then
@@ -69,6 +72,7 @@ jobs:
         working-directory: projeto
         run: |
           set -euo pipefail
+
           rm -rf www
           mkdir -p www
 
